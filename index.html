@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MrBeastChat</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#009dff" />
+  <link rel="icon" href="icon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="logo">MB</div>
+        <div>
+          <b>MrBeastChat</b>
+          <span>deepseek-v4-flash</span>
+        </div>
+      </div>
+      <button class="new-chat" id="newChatBtn">+ Новый чат</button>
+      <div class="chat-list" id="chatList"></div>
+      <div class="api-box">
+        <label>OpenModel API Key</label>
+        <input id="apiKeyInput" type="password" autocomplete="off" />
+        <button id="saveKeyBtn">Сохранить</button>
+        <small>Ключ хранится в браузере. В код уже вставлен тестовый ключ.</small>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn" id="menuBtn">☰</button>
+        <div class="avatar mrbeast-avatar">
+          <img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />
+        </div>
+        <div class="title">
+          <b>MrBeast</b>
+          <span id="status">онлайн</span>
+        </div>
+        <button class="icon-btn danger" id="clearBtn">🗑</button>
+      </header>
+
+      <section class="messages" id="messages">
+        <div class="welcome">
+          <div class="big-avatar mrbeast-avatar">
+            <img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />
+          </div>
+          <h1>MrBeastChat</h1>
+          <p>Общайся с вайбовым MrBeast: челленджи, идеи роликов, деньги, безумные проекты и мотивация.</p>
+          <div class="chips">
+            <button data-prompt="Придумай безумный челлендж на 24 часа">24h челлендж</button>
+            <button data-prompt="Придумай идею вирусного YouTube-ролика">Идея ролика</button>
+            <button data-prompt="Как бы ты потратил миллион долларов?">$1M</button>
+          </div>
+        </div>
+      </section>
+
+      <form class="composer" id="form">
+        <textarea id="input" rows="1" placeholder="Напиши MrBeast..." autocomplete="off"></textarea>
+        <button id="sendBtn" type="submit">➤</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
