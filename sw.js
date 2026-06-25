@@ -1,4 +1,4 @@
-const CACHE = 'mrbeastchat-v4';
+const CACHE = 'mrbeastchat-openrouter-v1';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './person-mrbeast.png'];
 
 self.addEventListener('install', event => {
@@ -20,8 +20,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Не трогаем POST-запросы к OpenModel и любые внешние домены.
-  // Иначе service worker может сломать API и вернуть null вместо Response.
+  // API-запросы к OpenRouter и любые POST/внешние запросы не трогаем.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   event.respondWith(

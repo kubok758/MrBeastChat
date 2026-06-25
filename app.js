@@ -1,8 +1,6 @@
-const DEFAULT_API_KEY = 'om-2e73gps9uRiQrRzBEntekuV9KPwZRq8szkgC1ZRqPuP';
-const MODEL = 'deepseek-v4-flash';
-const API_URL = 'https://api.openmodel.ai/v1/messages';
-const PUBLIC_CORS_PROXY = 'https://corsproxy.io/?url=';
-const USE_PROXY_FALLBACK = true;
+const DEFAULT_API_KEY = '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';
+const MODEL = 'deepseek/deepseek-v4-flash';
+const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const SYSTEM_PROMPT = 'Ты играешь роль MrBeast для фанового сайта MrBeastChat. Не утверждай, что ты настоящий Джимми Дональдсон. Отвечай энергично, дружелюбно, мемно, по-русски, с вайбом больших челленджей, денег, благотворительности и YouTube. Коротко, если вопрос простой. Не обещай реальные деньги, призы или связь с настоящим MrBeast.';
 const AVATAR_HTML = `<img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />`;
 
@@ -26,7 +24,7 @@ let busy = false;
 
 if (!chats.length) createChat(false);
 if (!activeId || !chats.find(c => c.id === activeId)) activeId = chats[0].id;
-apiKeyInput.value = localStorage.getItem('openmodel_key') || DEFAULT_API_KEY;
+apiKeyInput.value = localStorage.getItem('openrouter_key') || DEFAULT_API_KEY;
 renderAll();
 
 function safeJson(raw, fallback) {
@@ -122,7 +120,7 @@ async function sendMessage(text) {
   const typing = addTyping();
 
   try {
-    const answer = await askOpenModel(chat.messages);
+    const answer = await askOpenRouter(chat.messages);
     typing.remove();
     chat.messages.push({ role: 'assistant', content: answer });
     save();
@@ -137,48 +135,36 @@ async function sendMessage(text) {
   }
 }
 
-async function askOpenModel(history) {
-  const apiKey = (localStorage.getItem('openmodel_key') || DEFAULT_API_KEY).trim();
-  const messages = history
+async function askOpenRouter(history) {
+  const apiKey = (localStorage.getItem('openrouter_key') || DEFAULT_API_KEY).trim();
+  if (!apiKey) throw new Error('API key пустой');
+
+  const historyMessages = history
     .slice(-18)
     .filter(m => m.role === 'user' || m.role === 'assistant')
     .map(m => ({ role: m.role, content: m.content }));
 
   const payload = {
     model: MODEL,
-    system: SYSTEM_PROMPT,
-    messages,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...historyMessages
+    ],
     max_tokens: 900,
-    temperature: 0.85,
+    temperature: 0.88,
+    top_p: 0.95,
     stream: false
   };
 
-  try {
-    return await callOpenModel(API_URL, apiKey, payload, 'direct');
-  } catch (directError) {
-    // На GitHub Pages Safari часто режет прямой запрос к API по CORS.
-    // Поэтому для тестового ключа включён запасной вариант через публичный CORS proxy.
-    if (!USE_PROXY_FALLBACK || !isNetworkOrCorsError(directError)) throw directError;
-    const proxyUrl = PUBLIC_CORS_PROXY + encodeURIComponent(API_URL);
-    try {
-      return await callOpenModel(proxyUrl, apiKey, payload, 'proxy');
-    } catch (proxyError) {
-      proxyError.directError = directError;
-      proxyError.usedProxy = true;
-      throw proxyError;
-    }
-  }
-}
-
-async function callOpenModel(url, apiKey, payload, modeName) {
-  const res = await fetch(url, {
+  const res = await fetch(API_URL, {
     method: 'POST',
     mode: 'cors',
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
-      'X-Api-Key': apiKey,
-      'anthropic-version': '2023-06-01'
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': location.origin,
+      'X-OpenRouter-Title': 'MrBeastChat'
     },
     body: JSON.stringify(payload)
   });
@@ -189,26 +175,24 @@ async function callOpenModel(url, apiKey, payload, modeName) {
 
   if (!res.ok) {
     const apiMessage = data?.error?.message || data?.message || raw || res.statusText;
-    throw new Error(`[${modeName}] ${res.status} ${apiMessage}`.slice(0, 420));
+    throw new Error(`${res.status} ${apiMessage}`.slice(0, 450));
   }
 
   return extractAnswer(data);
 }
 
 function extractAnswer(data) {
-  const content = data?.content;
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content === 'string' && content.trim()) return content.trim();
   if (Array.isArray(content)) {
     const text = content
-      .filter(part => part?.type === 'text' && part?.text)
-      .map(part => part.text)
+      .map(part => typeof part === 'string' ? part : (part?.text || part?.content || ''))
       .join('\n')
       .trim();
     if (text) return text;
   }
-
   if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
-  if (data?.choices?.[0]?.message?.content?.trim()) return data.choices[0].message.content.trim();
-  return 'Я тут, но модель вернула пустой ответ.';
+  return 'Я тут, но OpenRouter вернул пустой ответ.';
 }
 
 function isNetworkOrCorsError(e) {
@@ -218,13 +202,24 @@ function isNetworkOrCorsError(e) {
 
 function makeNiceError(e) {
   const msg = String(e?.message || e);
-  const directMsg = e?.directError ? String(e.directError?.message || e.directError) : '';
 
-  if (isNetworkOrCorsError(e) || isNetworkOrCorsError(e?.directError)) {
-    return 'OpenModel не дал браузеру прямой запрос, я попробовал запасной CORS-proxy, но он тоже не ответил. Проверь VPN/интернет и обнови страницу. Если снова будет так же — нужен свой маленький proxy/Cloudflare Worker, потому что GitHub Pages сам API-ключ безопасно не прокинет.\n\nОшибка: ' + (directMsg || msg);
+  if (isNetworkOrCorsError(e)) {
+    return 'Браузер не смог достучаться до OpenRouter. Проверь интернет/VPN и обнови страницу. Если именно на GitHub Pages будет снова Load failed — значит браузер режет прямой запрос, тогда нужен маленький proxy/Cloudflare Worker.\n\nОшибка: ' + msg;
   }
 
-  return 'Упс, API не ответил. Проверь ключ, лимиты или VPN/интернет.\n\nОшибка: ' + msg;
+  if (msg.includes('401') || msg.includes('403')) {
+    return 'OpenRouter не принял API-ключ. Проверь, что ключ правильный и не отключён.\n\nОшибка: ' + msg;
+  }
+
+  if (msg.includes('402') || msg.toLowerCase().includes('credits')) {
+    return 'На OpenRouter не хватает кредитов или стоит лимит.\n\nОшибка: ' + msg;
+  }
+
+  if (msg.includes('429')) {
+    return 'OpenRouter ограничил частоту запросов. Подожди немного и попробуй ещё раз.\n\nОшибка: ' + msg;
+  }
+
+  return 'Упс, OpenRouter не ответил. Проверь ключ, лимиты или VPN/интернет.\n\nОшибка: ' + msg;
 }
 
 function toggleSidebar() {
@@ -260,7 +255,7 @@ menuBtn.onclick = e => {
   toggleSidebar();
 };
 saveKeyBtn.onclick = () => {
-  localStorage.setItem('openmodel_key', apiKeyInput.value.trim() || DEFAULT_API_KEY);
+  localStorage.setItem('openrouter_key', apiKeyInput.value.trim() || DEFAULT_API_KEY);
   alert('Ключ сохранён');
 };
 document.addEventListener('click', e => {
