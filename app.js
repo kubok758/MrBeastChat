@@ -1,6 +1,8 @@
 const DEFAULT_API_KEY = 'om-2e73gps9uRiQrRzBEntekuV9KPwZRq8szkgC1ZRqPuP';
 const MODEL = 'deepseek-v4-flash';
 const API_URL = 'https://api.openmodel.ai/v1/messages';
+const PUBLIC_CORS_PROXY = 'https://corsproxy.io/?url=';
+const USE_PROXY_FALLBACK = true;
 const SYSTEM_PROMPT = 'Ты играешь роль MrBeast для фанового сайта MrBeastChat. Не утверждай, что ты настоящий Джимми Дональдсон. Отвечай энергично, дружелюбно, мемно, по-русски, с вайбом больших челленджей, денег, благотворительности и YouTube. Коротко, если вопрос простой. Не обещай реальные деньги, призы или связь с настоящим MrBeast.';
 const AVATAR_HTML = `<img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />`;
 
@@ -142,22 +144,43 @@ async function askOpenModel(history) {
     .filter(m => m.role === 'user' || m.role === 'assistant')
     .map(m => ({ role: m.role, content: m.content }));
 
-  const res = await fetch(API_URL, {
+  const payload = {
+    model: MODEL,
+    system: SYSTEM_PROMPT,
+    messages,
+    max_tokens: 900,
+    temperature: 0.85,
+    stream: false
+  };
+
+  try {
+    return await callOpenModel(API_URL, apiKey, payload, 'direct');
+  } catch (directError) {
+    // На GitHub Pages Safari часто режет прямой запрос к API по CORS.
+    // Поэтому для тестового ключа включён запасной вариант через публичный CORS proxy.
+    if (!USE_PROXY_FALLBACK || !isNetworkOrCorsError(directError)) throw directError;
+    const proxyUrl = PUBLIC_CORS_PROXY + encodeURIComponent(API_URL);
+    try {
+      return await callOpenModel(proxyUrl, apiKey, payload, 'proxy');
+    } catch (proxyError) {
+      proxyError.directError = directError;
+      proxyError.usedProxy = true;
+      throw proxyError;
+    }
+  }
+}
+
+async function callOpenModel(url, apiKey, payload, modeName) {
+  const res = await fetch(url, {
     method: 'POST',
+    mode: 'cors',
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'X-Api-Key': apiKey,
       'anthropic-version': '2023-06-01'
     },
-    body: JSON.stringify({
-      model: MODEL,
-      system: SYSTEM_PROMPT,
-      messages,
-      max_tokens: 900,
-      temperature: 0.85,
-      stream: false
-    })
+    body: JSON.stringify(payload)
   });
 
   const raw = await res.text();
@@ -166,9 +189,13 @@ async function askOpenModel(history) {
 
   if (!res.ok) {
     const apiMessage = data?.error?.message || data?.message || raw || res.statusText;
-    throw new Error(`${res.status} ${apiMessage}`.slice(0, 320));
+    throw new Error(`[${modeName}] ${res.status} ${apiMessage}`.slice(0, 420));
   }
 
+  return extractAnswer(data);
+}
+
+function extractAnswer(data) {
   const content = data?.content;
   if (Array.isArray(content)) {
     const text = content
@@ -184,11 +211,19 @@ async function askOpenModel(history) {
   return 'Я тут, но модель вернула пустой ответ.';
 }
 
+function isNetworkOrCorsError(e) {
+  const msg = String(e?.message || e);
+  return msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed') || msg.includes('TypeError');
+}
+
 function makeNiceError(e) {
   const msg = String(e?.message || e);
-  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
-    return 'Упс, браузер не смог достучаться до OpenModel. Проверь интернет/VPN и обнови страницу. Если ошибка останется именно на GitHub Pages — значит OpenModel не пускает запросы из браузера по CORS, тогда нужен маленький proxy/backend.\n\nОшибка: ' + msg;
+  const directMsg = e?.directError ? String(e.directError?.message || e.directError) : '';
+
+  if (isNetworkOrCorsError(e) || isNetworkOrCorsError(e?.directError)) {
+    return 'OpenModel не дал браузеру прямой запрос, я попробовал запасной CORS-proxy, но он тоже не ответил. Проверь VPN/интернет и обнови страницу. Если снова будет так же — нужен свой маленький proxy/Cloudflare Worker, потому что GitHub Pages сам API-ключ безопасно не прокинет.\n\nОшибка: ' + (directMsg || msg);
   }
+
   return 'Упс, API не ответил. Проверь ключ, лимиты или VPN/интернет.\n\nОшибка: ' + msg;
 }
 

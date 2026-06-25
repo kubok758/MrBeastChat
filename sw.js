@@ -1,5 +1,5 @@
-const CACHE = 'mrbeastchat-v3';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
+const CACHE = 'mrbeastchat-v4';
+const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './person-mrbeast.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
