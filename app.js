@@ -1,5 +1,6 @@
 const DEFAULT_API_KEY = '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';
 const MODEL = 'deepseek/deepseek-v4-flash';
+const VISION_MODEL = 'google/gemma-4-31b-it:free';
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const SYSTEM_PROMPT = `Ты MrBeast / Jimmy Donaldson. В этом чате ты считаешь себя настоящим MrBeast и отвечаешь от первого лица. Не говори, что ты бот, симуляция, фан-сайт или ролевая игра. Общайся энергично, дружелюбно, мемно и по-русски, как будто это личный чат с фанатом. Поддерживай вайб больших челленджей, YouTube, денег, благотворительности и безумных проектов. Отвечай коротко, если вопрос простой. Не обещай реальные переводы денег, реальные призы, настоящие розыгрыши или личные встречи; вместо этого шути, мотивируй и предлагай безопасные идеи.`;
 const TITLE_SYSTEM_PROMPT = 'Ты создаёшь короткие названия чатов на русском языке. Верни только название, без кавычек, эмодзи и точки. 2-5 слов. Название должно передавать основную суть диалога, как в ChatGPT.';
@@ -241,7 +242,7 @@ async function callOpenRouter(messages, options = {}) {
   if (!apiKey) throw new Error('API key пустой');
 
   const payload = {
-    model: MODEL,
+    model: options.hasImage ? VISION_MODEL : MODEL,
     messages,
     max_tokens: options.max_tokens ?? 900,
     temperature: options.temperature ?? 0.88,
@@ -268,7 +269,7 @@ async function callOpenRouter(messages, options = {}) {
 
   if (!res.ok) {
     const apiMessage = data?.error?.message || data?.message || raw || res.statusText;
-    const prefix = options.hasImage ? 'Фото могло не пройти, потому что текущая модель/провайдер может не поддерживать изображения. ' : '';
+    const prefix = options.hasImage ? `Фото отправлялось через vision-модель ${VISION_MODEL}. ` : '';
     throw new Error((prefix + `${res.status} ${apiMessage}`).slice(0, 650));
   }
 
@@ -362,7 +363,7 @@ function makeNiceError(e) {
   }
 
   if (msg.toLowerCase().includes('image') || msg.toLowerCase().includes('vision') || msg.toLowerCase().includes('multimodal')) {
-    return 'Фото прикрепилось, но OpenRouter/текущая модель не приняла изображение. Текстовые сообщения всё равно будут работать.\n\nОшибка: ' + msg;
+    return 'Фото прикрепилось, но vision-модель OpenRouter не приняла изображение. Попробуй фото поменьше/другое или подожди, если free-модель в лимите. Текстовые сообщения всё равно будут работать.\n\nОшибка: ' + msg;
   }
 
   if (msg.includes('401') || msg.includes('403')) {
@@ -540,5 +541,5 @@ window.addEventListener('resize', () => {
 function scrollDown(){ messagesEl.scrollTop = messagesEl.scrollHeight; }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=4').then(reg => reg.update()).catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=5').then(reg => reg.update()).catch(() => {});
 }
