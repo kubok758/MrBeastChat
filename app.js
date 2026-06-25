@@ -1,6 +1,10 @@
 const DEFAULT_API_KEY = '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';
 const MODEL = 'deepseek/deepseek-v4-flash';
-const VISION_MODEL = 'google/gemma-4-31b-it:free';
+const VISION_MODELS = [
+  'openrouter/free',
+  'meta-llama/llama-3.2-11b-vision-instruct:free',
+  'google/gemma-4-31b-it:free'
+];
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const SYSTEM_PROMPT = `Ты MrBeast / Jimmy Donaldson. В этом чате ты считаешь себя настоящим MrBeast и отвечаешь от первого лица. Не говори, что ты бот, симуляция, фан-сайт или ролевая игра. Общайся энергично, дружелюбно, мемно и по-русски, как будто это личный чат с фанатом. Поддерживай вайб больших челленджей, YouTube, денег, благотворительности и безумных проектов. Отвечай коротко, если вопрос простой. Не обещай реальные переводы денег, реальные призы, настоящие розыгрыши или личные встречи; вместо этого шути, мотивируй и предлагай безопасные идеи.`;
 const TITLE_SYSTEM_PROMPT = 'Ты создаёшь короткие названия чатов на русском языке. Верни только название, без кавычек, эмодзи и точки. 2-5 слов. Название должно передавать основную суть диалога, как в ChatGPT.';
@@ -209,11 +213,10 @@ async function sendMessage(textFromButton) {
 }
 
 async function askOpenRouter(history) {
-  const hasImage = history.some(m => m.image?.dataUrl);
-  const historyMessages = history
-    .slice(-18)
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(toOpenRouterMessage);
+  const latest = history[history.length - 1];
+  const latestHasImage = Boolean(latest?.role === 'user' && latest?.image?.dataUrl);
+  const recent = history.slice(-18).filter(m => m.role === 'user' || m.role === 'assistant');
+  const historyMessages = recent.map((m, index) => toOpenRouterMessage(m, latestHasImage && index === recent.length - 1));
 
   return callOpenRouter([
     { role: 'system', content: SYSTEM_PROMPT },
@@ -222,58 +225,79 @@ async function askOpenRouter(history) {
     max_tokens: 900,
     temperature: 0.88,
     top_p: 0.95,
-    hasImage
+    hasImage: latestHasImage
   });
 }
 
-function toOpenRouterMessage(message) {
+function toOpenRouterMessage(message, includeImage = false) {
   const m = normalizeMessage(message);
-  if (m.role === 'user' && m.image?.dataUrl) {
+  if (m.role === 'user' && includeImage && m.image?.dataUrl) {
     const content = [];
     content.push({ type: 'text', text: m.content || 'Посмотри на прикреплённое фото и ответь по нему.' });
     content.push({ type: 'image_url', image_url: { url: m.image.dataUrl } });
     return { role: 'user', content };
   }
-  return { role: m.role, content: m.content || '' };
+  const imageNote = m.role === 'user' && m.image?.dataUrl ? '\n[К этому сообщению было прикреплено фото, но повторно оно не отправляется, чтобы не ловить лимиты.]' : '';
+  return { role: m.role, content: (m.content || '') + imageNote };
 }
 
 async function callOpenRouter(messages, options = {}) {
   const apiKey = (localStorage.getItem('openrouter_key') || DEFAULT_API_KEY).trim();
   if (!apiKey) throw new Error('API key пустой');
 
-  const payload = {
-    model: options.hasImage ? VISION_MODEL : MODEL,
-    messages,
-    max_tokens: options.max_tokens ?? 900,
-    temperature: options.temperature ?? 0.88,
-    top_p: options.top_p ?? 0.95,
-    stream: false
-  };
+  const modelsToTry = options.hasImage ? VISION_MODELS : [MODEL];
+  const errors = [];
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    mode: 'cors',
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': location.origin,
-      'X-OpenRouter-Title': 'MrBeastChat'
-    },
-    body: JSON.stringify(payload)
-  });
+  for (const model of modelsToTry) {
+    const payload = {
+      model,
+      messages,
+      max_tokens: options.max_tokens ?? 900,
+      temperature: options.temperature ?? 0.88,
+      top_p: options.top_p ?? 0.95,
+      stream: false
+    };
 
-  const raw = await res.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch {}
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        mode: 'cors',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': location.origin,
+          'X-Title': 'MrBeastChat',
+          'X-OpenRouter-Title': 'MrBeastChat'
+        },
+        body: JSON.stringify(payload)
+      });
 
-  if (!res.ok) {
-    const apiMessage = data?.error?.message || data?.message || raw || res.statusText;
-    const prefix = options.hasImage ? `Фото отправлялось через vision-модель ${VISION_MODEL}. ` : '';
-    throw new Error((prefix + `${res.status} ${apiMessage}`).slice(0, 650));
+      const raw = await res.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {}
+
+      if (!res.ok) {
+        const apiMessage = data?.error?.message || data?.message || raw || res.statusText;
+        const errorText = `${model}: ${res.status} ${apiMessage}`.slice(0, 500);
+        errors.push(errorText);
+
+        // Для фото free-провайдеры часто падают по лимиту/429. Пробуем следующую vision-модель автоматически.
+        if (options.hasImage && [400, 404, 408, 429, 500, 502, 503, 504].includes(res.status)) continue;
+        throw new Error(errorText);
+      }
+
+      return extractAnswer(data);
+    } catch (err) {
+      const msg = String(err?.message || err);
+      errors.push(`${model}: ${msg}`.slice(0, 500));
+      if (!options.hasImage || isNetworkOrCorsError(err)) throw err;
+    }
   }
 
-  return extractAnswer(data);
+  throw new Error((options.hasImage
+    ? 'Все vision-модели OpenRouter сейчас отказали. Скорее всего, free-лимит/перегруз у провайдера. Попробуй ещё раз через минуту или используй ключ с кредитами.\n\n'
+    : 'OpenRouter не ответил.\n\n') + errors.join('\n---\n'));
 }
 
 function extractAnswer(data) {
@@ -433,7 +457,7 @@ async function handleImageFile(file) {
   attachBtn.disabled = true;
   statusEl.textContent = 'готовлю фото...';
   try {
-    pendingImage = await resizeImage(file, 960, 0.84);
+    pendingImage = await resizeImage(file, 720, 0.72);
     renderAttachPreview();
   } catch (e) {
     console.warn(e);
@@ -461,10 +485,12 @@ function resizeImage(file, maxSide = 960, quality = 0.84) {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const dataUrl = canvas.toDataURL(mime, mime === 'image/jpeg' ? quality : undefined);
-        resolve({ dataUrl, mime, name: file.name || 'photo', width, height });
+        const mime = 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mime, quality);
+        resolve({ dataUrl, mime, name: file.name || 'photo.jpg', width, height });
       };
       img.onerror = () => resolve({ dataUrl: rawDataUrl, mime: file.type || 'image/jpeg', name: file.name || 'photo' });
       img.src = rawDataUrl;
@@ -541,5 +567,5 @@ window.addEventListener('resize', () => {
 function scrollDown(){ messagesEl.scrollTop = messagesEl.scrollHeight; }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=5').then(reg => reg.update()).catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=6').then(reg => reg.update()).catch(() => {});
 }

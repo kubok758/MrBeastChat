@@ -32,3 +32,9 @@ MrBeastChat
 - Текстовые сообщения идут через deepseek/deepseek-v4-flash.
 - Если в чате есть фото, запрос автоматически переключается на google/gemma-4-31b-it:free, потому что она поддерживает image input.
 - Формат фото для OpenRouter: content array + image_url data URL.
+
+
+Обновление v6:
+- Фото теперь отправляются сначала через openrouter/free, потом через запасные free vision-модели.
+- Старые фото из истории не отправляются повторно, чтобы не ловить лимиты.
+- Фото сжимаются до JPEG 720px, чтобы OpenRouter реже выдавал 429/provider error.
