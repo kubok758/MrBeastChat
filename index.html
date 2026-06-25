@@ -2,12 +2,12 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>MrBeastChat</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#009dff" />
   <link rel="icon" href="icon.svg" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <div class="app">
@@ -31,7 +31,7 @@
 
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn" id="menuBtn">☰</button>
+        <button class="icon-btn" id="menuBtn" aria-label="Открыть или закрыть боковую панель">☰</button>
         <div class="avatar mrbeast-avatar">
           <img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />
         </div>
@@ -39,7 +39,7 @@
           <b>MrBeast</b>
           <span id="status">онлайн</span>
         </div>
-        <button class="icon-btn danger" id="clearBtn">🗑</button>
+        <button class="icon-btn danger" id="clearBtn" aria-label="Удалить чат">🗑</button>
       </header>
 
       <section class="messages" id="messages">
@@ -48,7 +48,7 @@
             <img src="person-mrbeast.png" alt="MrBeast" onerror="this.remove(); this.parentElement.classList.add('avatar-fallback'); this.parentElement.textContent='MB';" />
           </div>
           <h1>MrBeastChat</h1>
-          <p>Общайся с вайбовым MrBeast: челленджи, идеи роликов, деньги, безумные проекты и мотивация.</p>
+          <p>Общайся с MrBeast: челленджи, идеи роликов, деньги, безумные проекты и мотивация.</p>
           <div class="chips">
             <button data-prompt="Придумай безумный челлендж на 24 часа">24h челлендж</button>
             <button data-prompt="Придумай идею вирусного YouTube-ролика">Идея ролика</button>
@@ -58,12 +58,17 @@
       </section>
 
       <form class="composer" id="form">
-        <textarea id="input" rows="1" placeholder="Напиши MrBeast..." autocomplete="off"></textarea>
-        <button id="sendBtn" type="submit">➤</button>
+        <input id="fileInput" type="file" accept="image/*" hidden />
+        <div class="attach-preview" id="attachPreview" hidden></div>
+        <div class="composer-row">
+          <button id="attachBtn" class="attach-btn" type="button" aria-label="Прикрепить фото">＋</button>
+          <textarea id="input" rows="1" placeholder="Напиши MrBeast..." autocomplete="off"></textarea>
+          <button id="sendBtn" type="submit" aria-label="Отправить">➤</button>
+        </div>
       </form>
     </main>
   </div>
 
-  <script src="app.js?v=openrouter-1"></script>
+  <script src="app.js?v=openrouter-photos-title-4"></script>
 </body>
 </html>

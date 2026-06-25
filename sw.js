@@ -1,4 +1,4 @@
-const CACHE = 'mrbeastchat-openrouter-v1';
+const CACHE = 'mrbeastchat-openrouter-v4';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg', './person-mrbeast.png'];
 
 self.addEventListener('install', event => {
